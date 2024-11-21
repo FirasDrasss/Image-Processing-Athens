@@ -1,41 +1,15 @@
 import matplotlib.pyplot as plt
 from skimage import io, morphology, measure, transform,color
+import numpy as np
 
 # Load the image
-image = io.imread("dices3.jpg")
+image = io.imread("dices9.jpg")
 
 # Define the new resolution (height, width)
 new_resolution = (900, 900)  # Example: 300px height, 400px width
 
 # Resize the image
 image = transform.resize(image, new_resolution, anti_aliasing=True)
-
-# Convert the image to grayscale
-#gray_image = color.rgb2gray(image)
-
-# Threshold for white (values close to 1 in grayscale)
-# Adjust the threshold value (e.g., 0.8) depending on your image
-#white_mask = gray_image > 0.8
-#cleaned_mask = morphology.binary_opening(white_mask, morphology.disk(100))
-#cleaned_mask = morphology.remove_small_objects(cleaned_mask, min_size=1000)
-#labeled_image = measure.label(cleaned_mask)  # Label connected components
-#regions = measure.regionprops(labeled_image)
-
-# Loop through the detected regions and draw bounding boxes
-#for region in regions:
-#    # Get the bounding box coordinates
-##    minr, minc, maxr, maxc = region.bbox
-    
-#    # Draw the rectangle (bounding box)
-#    rect = plt.Rectangle((minc, minr), maxc - minc, maxr - minr, 
-#                         edgecolor='red', facecolor='none', linewidth=2)
-#    ax.add_patch(rect)
-
-# Show the result
-#plt.title("Bounding Boxes Around Regions")
-#plt.show()
-
-
 
 # Extract the red channel
 red_channel = image[:, :, 0]
@@ -46,24 +20,12 @@ blue_channel = image[:, :, 2]
 # Threshold the red channel to isolate red dice
 red_mask = (red_channel > 40/255) & (green_channel < 110/255) & (blue_channel < 180/255)
 
-#plt.imshow(red_mask)
-#plt.axis("off")
-#plt.title("Cropped Image")
-#plt.show()
 # Clean up the binary mask using morphological operations
-#cleaned_mask = morphology.binary_opening(red_mask, morphology.disk(5))
 cleaned_mask= red_mask
 cleaned_mask = morphology.remove_small_objects(cleaned_mask, min_size=500)
 
 
 
-
-#plt.imshow(cleaned_mask)
-#plt.axis("off") 
-#plt.title("binaryclosing Image")
-#plt.show()
-# Label connected components
-# Label connected components
 labeled_image = measure.label(cleaned_mask)  # Label connected components
 regions = measure.regionprops(labeled_image)
 
@@ -93,9 +55,6 @@ for region in regions:
             # Crop the region from the original image (can use either color or binary mask)
             subimage = image[minr:maxr, minc:maxc]
 
-            # Optionally, resize the subimage to a target size (if you want consistent size)
-            # subimage_resized = resize(subimage, (desired_size, desired_size), anti_aliasing=True)
-
             # Add the cropped subimage to the list
             subimages.append(subimage)
 
@@ -113,39 +72,47 @@ else:
 
 for i, subimage in enumerate(subimages):
     print(f"Processing Subimage {i+1}")
-    print(f"Subimage type: {type(subimage)}, dtype: {subimage.dtype}")
+    
+    new_resolution = (400, 400)  # Example: 300px height, 400px width
 
+    # Resize the image
+    subimage = transform.resize(subimage, new_resolution, anti_aliasing=True)
     # Convert subimage to grayscale
     gray_image = color.rgb2gray(subimage)
 
-    # Threshold to create white mask
-    white_mask = gray_image > 0.85
-
+    white_mask = gray_image > 0.75
+    # Apply closing to fill small gaps in the dots
+    margin = 65
+    white_mask[:margin, :] = False  # Top edge
+    white_mask[:, -margin:] = False  # Right edge
     # Label connected components in the white mask
-    white_mask_morphed = morphology.area_opening(white_mask,area_threshold=20)
+    white_mask_morphed = morphology.erosion(white_mask, morphology.disk(3))
+    white_mask_morphed = morphology.area_opening(white_mask_morphed,area_threshold=1200)
     labeled_image = measure.label(white_mask_morphed)
     
     regions = measure.regionprops(labeled_image)
 
     # Plot the subimage
     fig, ax = plt.subplots()
-    ax.imshow(white_mask, cmap="gray")
+    ax.imshow(labeled_image, cmap="gray")
 
     for region in regions:
         minr, minc, maxr, maxc = region.bbox
         height = maxr - minr
         width = maxc - minc
-
-        print(f"Region bounding box: ({minr}, {minc}, {maxr}, {maxc}), Width: {width}, Height: {height}")
+        area = region.area
+        perimeter = region.perimeter
+        circularity = (4 * np.pi * area) / (perimeter ** 2)
+        
 
         # Check if the bounding box dimensions are valid
         
         aspect_ratio = min(height, width) / max(height, width)
 
-        if aspect_ratio > 0.6:
+        if aspect_ratio > 0.5 and circularity > 0.4:
             print(f"Region bounding box: ({minr}, {minc}, {maxr}, {maxc}), Width: {width}, Height: {height}")
             rect = plt.Rectangle((minc, minr), width, height,
-                                  edgecolor='red', facecolor='none', linewidth=2)
+                                    edgecolor='red', facecolor='none', linewidth=2)
             ax.add_patch(rect)
 
     ax.axis("off")
